@@ -31,7 +31,7 @@ type NavItem = {
 const navItems: NavItem[] = [
   {
     icon: <LayoutDashboard />,
-    name: "Dashboard",
+    name: "Tableau de bord",
     path: "/",
     // subItems: [{ name: "Ecommerce", path: "/", pro: false, icon: <GridIcon /> }],
   },
@@ -39,10 +39,10 @@ const navItems: NavItem[] = [
     name: "KPIS",
     icon: <SlidersHorizontal />,
     subItems: [
-      { name: "Availability", path: "/kpi-policies-availability", pro: false, icon: <SlidersHorizontal /> },
+      { name: "Définir critères KPI", path: "/kpi-policies-availability", pro: false, icon: <SlidersHorizontal /> },
       // { name: "Weekly locks", path: "/kpi-policies-locks", pro: false, icon: <Lock /> },
-      { name: "Daily Monitoring", path: "/kpi-daily-monitoring", pro: false, icon: <CalendarRange /> },
-      { name: "Weekly Review", path: "/kpi-weekly-review", pro: false, icon: <PieChartIcon /> },
+      { name: "Disponibilité jour", path: "/kpi-daily-monitoring", pro: false, icon: <CalendarRange /> },
+      { name: "Revue hebdomadaire", path: "/kpi-weekly-review", pro: false, icon: <PieChartIcon /> },
       // { name: "Settings", path: "/kpi-settings", pro: false, icon: <Settings /> },
     ],
   },

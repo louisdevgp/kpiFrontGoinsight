@@ -1,210 +1,57 @@
 import { useEffect, useMemo, useState } from "react";
 import ComponentCard from "../../components/common/ComponentCard";
 import DatePicker from "../../components/form/date-picker";
-import Input from "../../components/form/input/InputField";
 import Button from "../../components/ui/button/Button";
+import PolicySelect from "../../components/policiy/PolicySelect";
 import { api, notify } from "../../lib/api";
 import { toMondayISO } from "../../utils/date";
-import {
-  RefreshCw,
-  CalendarDays,
-  CalendarRange,
-  ShieldCheck,
-  Gauge,
-  Activity,
-  TrendingUp,
-} from "lucide-react";
+import { RefreshCw, CalendarDays, CalendarRange, Activity, Gauge, ShieldCheck, AlertTriangle } from "lucide-react";
 
-export default function AvailabilityMetrics() {
-  const [date, setDate] = useState("");
-  const [weekStart, setWeekStart] = useState("");
-  const [policyId, setPolicyId] = useState("");           // <- l’ID sélectionné depuis la liste
-  const [policies, setPolicies] = useState([]);           // <- liste des policies
-  const [polLoading, setPolLoading] = useState(false);
-
-  const [data, setData] = useState(null);
-  const [loading, setLoading] = useState(false);
-
-  // charge les policies au montage
-  useEffect(() => {
-    const loadPolicies = async () => {
-      setPolLoading(true);
-      try {
-        const res = await api.get("/api/policies");
-        // compat : /api/policies peut renvoyer {rows} ou Array
-        const list = Array.isArray(res?.rows)
-          ? res.rows
-          : Array.isArray(res?.data)
-          ? res.data
-          : Array.isArray(res)
-          ? res
-          : [];
-        setPolicies(list);
-        // si aucune policy choisie, proposer la plus récente active si dispo sinon la première
-        if (!policyId && list.length) {
-          const active = list.find((p) => p.status === "active");
-          setPolicyId(String((active || list[0]).id));
-        }
-      } finally {
-        setPolLoading(false);
-      }
-    };
-    loadPolicies();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  const onDateChange = (_d, dateStr) => setDate(dateStr);
-  const onWeekChange = (_d, dateStr) => setWeekStart(toMondayISO(dateStr));
-
-  const load = async () => {
-    if (!weekStart || !date || !policyId) return;
-    setLoading(true);
-    try {
-      const res = await notify(
-        api.get("/api/metrics/summary", {
-          date,
-          week_start: weekStart,
-          policyId, // <- ID issu du select
-        }),
-        { loading: "Chargement…", success: "Métriques mises à jour ✅" }
-      );
-      setData(res || {});
-    } catch {
-      setData(null);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // Helpers format
-  const fmtInt = (v) => {
-    const n = Number(v ?? 0);
-    return Number.isFinite(n) ? n.toLocaleString("fr-FR") : "—";
-  };
-  const fmtPct = (v) => {
-    const n = Number(v ?? 0);
-    if (!Number.isFinite(n)) return "—";
-    return `${n.toFixed(1)}%`;
-  };
-
-  // États dérivés pour badges
-  const dailyPct = Number(data?.daily_available_pct ?? 0);
-  const weeklyPct = Number(data?.weekly_available_pct ?? 0);
-  const dayBadge = dailyPct >= 90 ? "success" : dailyPct >= 75 ? "warning" : "danger";
-  const weekBadge = weeklyPct >= 90 ? "success" : weeklyPct >= 75 ? "warning" : "danger";
-
-  // Mini résumé (mémo pour éviter re-renders inutiles)
-  const summary = useMemo(
-    () => [
-      {
-        label: "TPE observés (jour)",
-        value: fmtInt(data?.tpe_day_total),
-        icon: Activity,
-        tone: "default",
-        hint: "Nombre de TPE rapportant au moins 1 slot aujourd’hui",
-      },
-      {
-        label: "Disponibles (jour)",
-        value: fmtPct(dailyPct),
-        icon: Gauge,
-        tone: dayBadge,
-        hint: "Part de TPE conformes à la règle sur la journée",
-      },
-      {
-        label: "Disponibles (semaine)",
-        value: fmtPct(weeklyPct),
-        icon: ShieldCheck,
-        tone: weekBadge,
-        hint: "Part de TPE conformes à la règle sur la semaine",
-      },
-      {
-        label: "Slots jour (OK / FAIL)",
-        value: `${fmtInt(data?.slots_ok_day)} / ${fmtInt(data?.slots_fail_day)}`,
-        icon: TrendingUp,
-        tone: "default",
-        hint: "Répartition des créneaux journaliers",
-      },
-    ],
-    [data, dailyPct, weeklyPct, dayBadge, weekBadge]
-  );
-
-  return (
-    <ComponentCard
-      className="col-12"
-      title="Tableau de bord — Indicateurs clés"
-      desc="Synthèse du jour et de la semaine selon la règle sélectionnée."
-      rightSlot={
-        <div className="flex items-center gap-2">
-          <Button variant="outline" onClick={load} disabled={!date || !weekStart || !policyId || loading}>
-            <RefreshCw className={`h-4 w-4 mr-1 ${loading ? "animate-spin" : ""}`} />
-            Actualiser
-          </Button>
-        </div>
-      }
-    >
-      {/* Filtres */}
-      <div className="grid gap-3 md:grid-cols-5">
-        <LabeledField icon={CalendarDays} label="Date">
-          <DatePicker id="dash_date" placeholder="YYYY-MM-DD" onChange={onDateChange} />
-        </LabeledField>
-
-        <LabeledField icon={CalendarRange} label="Semaine (lundi)">
-          <DatePicker id="dash_week" placeholder="YYYY-MM-DD" onChange={onWeekChange} />
-        </LabeledField>
-
-        {/* Select des policies (par nom) */}
-        <div>
-          <div className="text-xs mb-1 text-gray-500 dark:text-gray-400">Politique</div>
-          <select
-            className="h-11 w-full rounded-lg border border-gray-300 bg-transparent px-3 text-sm shadow-theme-xs dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
-            value={policyId}
-            onChange={(e) => setPolicyId(e.target.value)}
-            disabled={polLoading || !policies.length}
-          >
-            {polLoading && <option>Chargement…</option>}
-            {!polLoading && !policies.length && <option>Aucune politique</option>}
-            {!polLoading &&
-              policies.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name} {p.status === "active" ? "— Actif" : "— Brouillon"}
-                </option>
-              ))}
-          </select>
-        </div>
-
-        <div className="flex items-end">
-          <Button onClick={load} disabled={!date || !weekStart || !policyId || loading} className="w-full">
-            {loading ? <RefreshCw className="h-4 w-4 mr-1 animate-spin" /> : null}
-            Charger
-          </Button>
-        </div>
-      </div>
-
-      {/* KPIs */}
-      <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        {loading
-          ? Array.from({ length: 4 }).map((_, i) => <KPIStat.Skeleton key={i} />)
-          : summary.map((s, i) => <KPIStat key={i} {...s} />)}
-      </div>
-    </ComponentCard>
-  );
+/* Utils */
+function yesterdayISO() {
+  const d = new Date();
+  d.setDate(d.getDate() - 1);
+  return d.toISOString().slice(0, 10);
 }
 
-/* ---------- Sous-composants réutilisables ---------- */
-
-function LabeledField({ label, icon: Icon, children }) {
+/** Champ date robuste (DatePicker + fallback input natif) */
+function DateField({ label, value, onChange, id = "date" }) {
   return (
     <div>
       <div className="text-xs mb-1 text-gray-500 dark:text-gray-400 flex items-center gap-1">
-        {Icon ? <Icon className="h-3.5 w-3.5" /> : null}
-        {label}
+        <CalendarDays className="h-3.5 w-3.5" /> {label}
       </div>
-      {children}
+      <DatePicker id={id} placeholder="YYYY-MM-DD" onChange={(_, s) => onChange(s)} />
+      <input
+        type="date"
+        className="mt-2 h-11 w-full rounded-lg border border-gray-300 bg-transparent px-3 text-sm dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
+        value={value || ""}
+        onChange={(e) => onChange(e.target.value)}
+      />
     </div>
   );
 }
 
-function KPIStat({ label, value, icon: Icon, tone = "default", hint }) {
+/** Champ lundi de semaine (normalise en lundi ISO) */
+function WeekField({ label, value, onChange, id = "week" }) {
+  return (
+    <div>
+      <div className="text-xs mb-1 text-gray-500 dark:text-gray-400 flex items-center gap-1">
+        <CalendarRange className="h-3.5 w-3.5" /> {label}
+      </div>
+      <DatePicker id={id} placeholder="YYYY-MM-DD" onChange={(_, s) => onChange(toMondayISO(s))} />
+      <input
+        type="date"
+        className="mt-2 h-11 w-full rounded-lg border border-gray-300 bg-transparent px-3 text-sm dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
+        value={value || ""}
+        onChange={(e) => onChange(toMondayISO(e.target.value))}
+      />
+    </div>
+  );
+}
+
+/* KPI Card */
+function KPI({ label, value, icon: Icon, tone = "default", hint }) {
   const toneClasses =
     tone === "success"
       ? "bg-emerald-50 dark:bg-emerald-500/10 border-emerald-200 dark:border-emerald-700"
@@ -233,10 +80,7 @@ function KPIStat({ label, value, icon: Icon, tone = "default", hint }) {
       : "text-indigo-600 dark:text-indigo-300";
 
   return (
-    <div
-      className={`rounded-2xl border p-5 transition-colors ${toneClasses}`}
-      title={hint || undefined}
-    >
+    <div className={`rounded-2xl border p-5 transition-colors ${toneClasses}`} title={hint || undefined}>
       <div className="flex items-center justify-between">
         <div className="text-sm text-gray-500 dark:text-gray-400">{label}</div>
         {Icon ? <Icon className={`h-5 w-5 ${iconTone}`} /> : null}
@@ -246,11 +90,136 @@ function KPIStat({ label, value, icon: Icon, tone = "default", hint }) {
   );
 }
 
-KPIStat.Skeleton = function Skeleton() {
+export default function AvailabilityMetrics() {
+  const [date, setDate] = useState(yesterdayISO()); // veille par défaut
+  const [weekStart, setWeekStart] = useState(toMondayISO(yesterdayISO()));
+  const [policyId, setPolicyId] = useState(""); // via PolicySelect
+
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(false);
+
+  const fmtInt = (v) => {
+    const n = Number(v ?? 0);
+    return Number.isFinite(n) ? n.toLocaleString("fr-FR") : "—";
+  };
+  const fmtPct = (v) => {
+    const n = Number(v ?? 0);
+    if (!Number.isFinite(n)) return "—";
+    return `${n.toFixed(1)}%`;
+  };
+
+  const indispoDay = useMemo(() => {
+    const total = Number(data?.tpe_day_total ?? 0);
+    const ok = Number(data?.tpe_day_ok ?? 0);
+    if (!Number.isFinite(total) || !Number.isFinite(ok)) return "—";
+    return fmtInt(Math.max(0, total - ok));
+  }, [data]);
+
+  const load = async () => {
+    if (!date || !weekStart || !policyId) return;
+    setLoading(true);
+    try {
+      // ✅ 1) corrige l’URL
+      // ✅ 2) on ne garde que res.data (le payload), pas l’objet entier
+      const res = await notify(
+        api.get("/api/metrics/metrics/summary/latest", { policyId: Number(policyId) }),
+        { loading: "Chargement…", success: "Métriques mises à jour ✅" }
+      );
+      setData(res?.data ?? null);
+    } catch (_) {
+      setData(null);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Chargement auto si tout est renseigné
+  useEffect(() => {
+    if (policyId && date && weekStart) load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [policyId, date, weekStart]);
+
+  // Tones pour badges jour / semaine
+  const dailyPct = Number(data?.daily_available_pct ?? 0);
+  const weeklyPct = Number(data?.weekly_available_pct ?? 0);
+  const dayTone = dailyPct >= 90 ? "success" : dailyPct >= 75 ? "warning" : "danger";
+  const weekTone = weeklyPct >= 90 ? "success" : weeklyPct >= 75 ? "warning" : "danger";
+
   return (
-    <div className="rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-white/[0.03] p-5">
-      <div className="h-3 w-24 bg-gray-200 dark:bg-gray-800 rounded animate-pulse" />
-      <div className="mt-3 h-7 w-28 bg-gray-200 dark:bg-gray-800 rounded animate-pulse" />
-    </div>
+    <ComponentCard
+      title="Tableau de bord — Indicateurs clés"
+      desc="Données de la veille et de la semaine en cours, selon la règle sélectionnée."
+    >
+      {/* Toolbar */}
+      <div className="mb-4 flex flex-wrap items-center justify-end gap-2">
+        {!date || !weekStart || !policyId ? (
+          <div className="w-full md:w-auto flex items-center gap-2 text-xs rounded-lg border border-dashed border-amber-300 bg-amber-50 text-amber-700 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-300 px-3 py-2">
+            <AlertTriangle className="h-4 w-4" />
+            Renseignez <b>la date</b>, <b>le lundi de semaine</b> et <b>la règle</b>, puis cliquez sur <b>Actualiser</b>.
+          </div>
+        ) : null}
+        <Button variant="outline" onClick={load} disabled={!date || !weekStart || !policyId || loading}>
+          <RefreshCw className={`h-4 w-4 mr-1 ${loading ? "animate-spin" : ""}`} />
+          Actualiser
+        </Button>
+      </div>
+
+      {/* Filtres */}
+      <div className="grid gap-3 md:grid-cols-5">
+        <DateField id="dash_date" label="Date (veille par défaut)" value={date} onChange={setDate} />
+        <WeekField id="dash_week" label="Semaine (lundi)" value={weekStart} onChange={setWeekStart} />
+        <div className="md:col-span-2">
+          <div className="text-xs mb-1 text-gray-500 dark:text-gray-400">Règle de disponibilité</div>
+          <PolicySelect value={policyId} onChange={setPolicyId} />
+        </div>
+      </div>
+
+      {/* KPIs */}
+      <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <KPI
+          label="TPE observés (jour)"
+          value={fmtInt(data?.tpe_day_total)}
+          icon={Activity}
+          hint="Nombre de TPE rapportant au moins 1 slot pour la date sélectionnée"
+        />
+        <KPI
+          label="TPE disponibles (jour)"
+          value={fmtInt(data?.tpe_day_ok)}
+          icon={Gauge}
+          tone={dayTone}
+          hint="Conformes à la policy choisie sur la journée"
+        />
+        <KPI
+          label="TPE indisponibles (jour)"
+          value={indispoDay}
+          icon={AlertTriangle}
+          tone={dailyPct < 75 ? "danger" : "warning"}
+          hint="Total observés - disponibles"
+        />
+        <KPI
+          label="Taux disponibilité (jour)"
+          value={fmtPct(data?.daily_available_pct)}
+          icon={ShieldCheck}
+          tone={dayTone}
+          hint="(TPE disponibles / TPE observés) × 100"
+        />
+      </div>
+
+      <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-2">
+        <KPI
+          label="Taux disponibilité (semaine)"
+          value={fmtPct(data?.weekly_available_pct)}
+          icon={ShieldCheck}
+          tone={weekTone}
+          hint="Selon la règle et le lundi sélectionnés"
+        />
+        <KPI
+          label="TPE observés (semaine)"
+          value={fmtInt(data?.tpe_week_total)}
+          icon={Activity}
+          hint="Population hebdomadaire observée"
+        />
+      </div>
+    </ComponentCard>
   );
-};
+}

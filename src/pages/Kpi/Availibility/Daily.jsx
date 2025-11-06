@@ -1,436 +1,452 @@
-// src/pages/availability/Daily.jsx
 import { useEffect, useMemo, useState } from "react";
 import ComponentCard from "../../../components/common/ComponentCard";
-import Button from "../../../components/ui/button/Button";
-import Input from "../../../components/form/input/InputField";
 import DatePicker from "../../../components/form/date-picker";
-import { Table, TableBody, TableCell, TableHeader, TableRow } from "../../../components/ui/table";
-import Badge from "../../../components/ui/badge/Badge";
-import { api, notify } from "../../../lib/api";
-import { RefreshCw, Search, Download, AlertTriangle, Loader2 } from "lucide-react";
+import Input from "../../../components/form/input/InputField";
+import Button from "../../../components/ui/button/Button";
+import PolicySelect from "../../../components/policiy/PolicySelect";
+import { api, notify, download } from "../../../lib/api";
+import { toMondayISO } from "../../../utils/date";
+import { CalendarDays, RefreshCw, Calculator, Download } from "lucide-react";
+
+/* ====== Utilitaires ====== */
+function toISO(d) {
+  if (!d) return "";
+  try {
+    return new Date(d).toISOString().slice(0, 10);
+  } catch {
+    return "";
+  }
+}
+function yesterdayISO() {
+  const d = new Date();
+  d.setDate(d.getDate() - 1);
+  return d.toISOString().slice(0, 10);
+}
+
+
+
+function ReasonChip({ r }) {
+  const map = {
+    OFFLINE_DURATION: "Hors-ligne prolongé",
+    STATUS_INACTIVE: "Statut inactif",
+    SIGNAL_LOW: "Signal faible",
+    GEOFENCE_OUT: "Hors geofence",
+    BATTERY_LOW: "Batterie faible",
+    PAPER_OUT: "Plus de papier",
+    PAPER_UNKNOWN: "État papier inconnu",
+    PAPER_UNKNOWN_WARN: "Papier incertain",
+    NO_DATA: "Pas de données",
+  };
+
+  return (
+    <div className="inline-flex items-center rounded-full bg-gray-100 px-2 py-1 text-xs font-medium text-gray-800">
+      {map[r] || r}
+    </div>
+  );
+}
+
+/** Champ date robuste (DatePicker + input natif) */
+function DateField({ label, value, onChange, id = "date" }) {
+  return (
+    <div>
+      <div className="text-xs mb-1 text-gray-500 dark:text-gray-400 flex items-center gap-1">
+        <CalendarDays className="h-3.5 w-3.5" /> {label}
+      </div>
+      <DatePicker
+        id={id}
+        placeholder="YYYY-MM-DD"
+        onChange={(_, s) => onChange(toISO(s))}
+      />
+      <input
+        type="date"
+        className="mt-2 h-11 w-full rounded-lg border border-gray-300 bg-transparent px-3 text-sm dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
+        value={value || ""}
+        onChange={(e) => onChange(toISO(e.target.value))}
+      />
+    </div>
+  );
+}
+
+/* KPI Card */
+function KPI({ label, value, tone = "default" }) {
+  const toneClasses =
+    tone === "success"
+      ? "bg-emerald-50 dark:bg-emerald-500/10 border-emerald-200 dark:border-emerald-700"
+      : tone === "warning"
+      ? "bg-amber-50 dark:bg-amber-500/10 border-amber-200 dark:border-amber-700"
+      : tone === "danger"
+      ? "bg-rose-50 dark:bg-rose-500/10 border-rose-200 dark:border-rose-700"
+      : "bg-white dark:bg-white/[0.03] border-gray-200 dark:border-gray-800";
+
+  const valueClasses =
+    tone === "success"
+      ? "text-emerald-700 dark:text-emerald-300"
+      : tone === "warning"
+      ? "text-amber-700 dark:text-amber-300"
+      : tone === "danger"
+      ? "text-rose-700 dark:text-rose-300"
+      : "text-gray-900 dark:text-gray-100";
+
+  return (
+    <div className={`rounded-2xl border p-5 transition-colors ${toneClasses}`}>
+      <div className="text-sm text-gray-500 dark:text-gray-400">{label}</div>
+      <div className={`mt-2 text-2xl font-semibold ${valueClasses}`}>
+        {value ?? "—"}
+      </div>
+    </div>
+  );
+}
 
 export default function Daily() {
-  // ───────── Form
-  const [date, setDate] = useState("");
+  const [date, setDate] = useState(yesterdayISO()); // veille par défaut
   const [policyId, setPolicyId] = useState("");
-
-  // ───────── Policies
-  const [policies, setPolicies] = useState([]);
-  const [loadingPolicies, setLoadingPolicies] = useState(false);
-
-  // ───────── Filtres & pagination
-  const [draftSearch, setDraftSearch] = useState("");
-  const [search, setSearch] = useState("");
-  const [status, setStatus] = useState("all"); // all|available|unavailable (front-only)
-  const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(50);
-
-  // ───────── Data
-  const [rows, setRows] = useState([]);
-  const [meta, setMeta] = useState(null);
-  const [loading, setLoading] = useState(false);
-  const [err, setErr] = useState("");
-
-  // ───────── Loaders boutons
   const [computing, setComputing] = useState(false);
-  const [refreshing, setRefreshing] = useState(false);
 
-  // Init policies
-  useEffect(() => {
-    const loadPolicies = async () => {
-      setLoadingPolicies(true);
-      try {
-        const res = await api.get("/api/policies");
-        const list = Array.isArray(res?.data) ? res.data : [];
-        setPolicies(list);
-        if (!policyId && list.length) setPolicyId(String(list[0].id));
-      } catch {
-        /* ignore */
-      } finally {
-        setLoadingPolicies(false);
-      }
-    };
-    loadPolicies();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  const [rows, setRows] = useState([]);
+  const [loading, setLoading] = useState(false);
 
-  const onDateChange = (_d, dateStr) => setDate(dateStr);
+  const [search, setSearch] = useState("");
+  const [status, setStatus] = useState("all"); // all | available | unavailable
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(200);
+  const [total, setTotal] = useState(0);
 
-  // Debounce recherche (front)
-  useEffect(() => {
-    const t = setTimeout(() => setSearch(draftSearch.trim()), 300);
-    return () => clearTimeout(t);
-  }, [draftSearch]);
+  // KPIs (provenant de meta/summary back)
+  const [availableCount, setAvailableCount] = useState(0);
+  const [unavailableCount, setUnavailableCount] = useState(0);
 
-  const normalizeList = (res) => (Array.isArray(res?.data) ? res.data : Array.isArray(res) ? res : []);
-  const normalizeMeta = (res) => res?.meta ?? null;
-
-  // ───────── Actions
-  const compute = async (e) => {
-    e?.preventDefault?.();
+  const compute = async () => {
     if (!date || !policyId) return;
-    setErr("");
+    const week_start = toMondayISO(date);
     setComputing(true);
     try {
       await notify(
         api.post("/api/availability/daily/compute", {
           date,
-          policyId: Number(policyId),
-          timeout: 300_000,
+          week_start,
+          policyId,
         }),
-        { loading: "Calcul…", success: "Jour calculé" }
+        { loading: "Calcul quotidien…", success: "Calcul quotidien terminé ✅" }
       );
-      await read(true); // recharge après calcul
+      await load(); // recharge
     } finally {
       setComputing(false);
     }
   };
 
-  const read = async (fromCompute = false) => {
+  async function exportDaily() {
+  if (!date || !policyId) return;
+  await notify(
+    download("/api/export/daily/export", { date, policyId, week_start: toMondayISO(date), auto: 1 }).then(() => {}).catch(() => {}),
+    { loading: "Export en cours…", success: "Téléchargement lancé ✅" }
+  );
+}
+
+  const load = async () => {
     if (!date || !policyId) return;
-    if (!fromCompute) setRefreshing(true);
     setLoading(true);
-    setErr("");
     try {
       const res = await notify(
         api.get("/api/availability/daily", {
           date,
-          policyId: Number(policyId),
+          policyId,
           page,
           pageSize,
           search,
+          status, // << filtré côté back
         }),
-        { loading: "Chargement…", success: "OK" }
+        { loading: "Chargement…", success: "Données à jour ✅" }
       );
-      setRows(normalizeList(res));
-      setMeta(normalizeMeta(res));
-    } catch (error) {
-      setErr(error?.response?.data?.message || "Impossible de charger les résultats.");
-      setRows([]);
-      setMeta(null);
+      const data = Array.isArray(res?.data) ? res.data : res?.data?.data || [];
+      const meta = res?.meta || res?.data?.meta || {};
+      const summary = res?.summary || res?.data?.summary || {};
+
+      setRows(data);
+      setTotal(Number(meta.total ?? data.length));
+      setAvailableCount(
+        Number(meta.available_count ?? summary.available_count ?? 0)
+      );
+      setUnavailableCount(
+        Number(meta.unavailable_count ?? summary.unavailable_count ?? 0)
+      );
     } finally {
       setLoading(false);
-      setRefreshing(false);
     }
   };
 
-  // Auto-read quand pagination/filtre changent (si prêt)
   useEffect(() => {
-    if (date && policyId) read();
+    if (policyId) load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [page, pageSize, search]);
+  }, [policyId, date, page, pageSize, search, status]);
 
-  // Export CSV (après filtre local status)
-  const toCSV = () => {
-    if (!rows?.length) return;
-    const header = ["terminal_sn", "day_ok", "slot_ok_count", "slot_fail_count", "failed_slots"];
-    const lines = [header.join(";")];
-    filtered.forEach((r) => {
-      const vals = [
-        r.terminal_sn ?? "",
-        r.day_ok ? "DISPONIBLE" : "INDISPONIBLE",
-        String(r.slot_ok_count ?? 0),
-        String(r.slot_fail_count ?? 0),
-        Array.isArray(r.failed_slots) ? r.failed_slots.join(", ") : "",
-      ];
-      lines.push(vals.map((v) => String(v).replace(/;/g, ",")).join(";"));
-    });
-    const blob = new Blob(["\ufeff" + lines.join("\n")], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `daily_${date || "export"}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
-  };
+  const availabilityPct = useMemo(() => {
+    const tot = Number(total || 0);
+    return tot ? `${((availableCount / tot) * 100).toFixed(1)}%` : "—";
+  }, [availableCount, total]);
 
-  // Filtres front (status)
-  const filtered = useMemo(() => {
-    if (status === "all") return rows;
-    return rows.filter((r) => (status === "available" ? r.day_ok : !r.day_ok));
-  }, [rows, status]);
-
-  const statusOptions = useMemo(
-    () => [
-      { value: "all", label: "Tous" },
-      { value: "available", label: "Disponibles" },
-      { value: "unavailable", label: "Indisponibles" },
-    ],
-    []
-  );
-
-  const hintNeeded = !date || !policyId;
+  const tableRows = rows;
 
   return (
-    <div className="space-y-6">
-      {/* ─────────── Actions ─────────── */}
-      <ComponentCard title="Suivi quotidien des TPE" desc="Calculez et consultez la disponibilité par jour.">
-        {/* grille 12 avec alignement bas */}
-        <form onSubmit={compute} className="grid gap-3 md:grid-cols-12 items-end">
-          {/* Date */}
-          <div className="md:col-span-3">
-            <DatePicker
-              id="daily_date"
-              label="Date"
-              placeholder="YYYY-MM-DD"
-              onChange={onDateChange}
-              /* si votre DatePicker supporte la prop suivante */
-              inputClassName="h-11"
-            />
-          </div>
+    <ComponentCard
+      title="Disponibilité — Quotidienne"
+      desc="Calcul et consultation quotidienne par règle."
+    >
+      {/* Toolbar */}
+      <div className="mb-4 flex flex-wrap items-center justify-end gap-2">
+        <Button
+          variant="outline"
+          onClick={compute}
+          disabled={!date || !policyId || computing}
+        >
+          <Calculator
+            className={`h-4 w-4 mr-1 ${computing ? "animate-spin" : ""}`}
+          />
+          {computing ? "Calcul en cours…" : "Calculer la journée"}
+        </Button>
+        <Button
+          variant="outline"
+          onClick={load}
+          disabled={!date || !policyId || loading}
+        >
+          <RefreshCw
+            className={`h-4 w-4 mr-1 ${loading ? "animate-spin" : ""}`}
+          />
+          Actualiser
+        </Button>
+<Button variant="outline" onClick={exportDaily} disabled={!date || !policyId}>
+  <Download className="h-4 w-4 mr-1" />Export CSV (avec raisons)
+</Button> 
+      </div>
 
-          {/* Policy */}
-          <div className="md:col-span-5">
-            <div className="text-xs mb-1 text-gray-500">Policy</div>
-            <select
-              className="h-11 w-full rounded-lg border border-gray-300 bg-transparent px-4 text-sm dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
-              value={policyId}
-              onChange={(e) => {
-                setPolicyId(e.target.value);
-                setPage(1);
-              }}
-              disabled={loadingPolicies}
-            >
-              <option value="" disabled>
-                Choisir une policy…
-              </option>
-              {policies.map((p) => (
-                <option key={p.id} value={p.id}>
-                  #{p.id} — {p.name || "Sans nom"}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {/* Calculer */}
-          <div className="md:col-span-2 self-end">
-            <Button className="h-11 w-full" disabled={!date || !policyId || computing} aria-busy={computing ? "true" : "false"}>
-              {computing ? (
-                <>
-                  <Loader2 className="h-4 w-4 mr-1 animate-spin" />
-                  Calcul…
-                </>
-              ) : (
-                <>
-                  <RefreshCw className="h-4 w-4 mr-1" />
-                  Calculer
-                </>
-              )}
-            </Button>
-          </div>
-
-          {/* Actualiser */}
-          <div className="md:col-span-2 self-end">
-            <Button
-              className="h-11 w-full"
-              variant="outline"
-              onClick={(e) => {
-                e.preventDefault();
-                setPage(1);
-                read();
-              }}
-              disabled={!date || !policyId || refreshing}
-              aria-busy={refreshing ? "true" : "false"}
-              title="Relire depuis l'API avec les filtres"
-            >
-              {refreshing ? (
-                <>
-                  <Loader2 className="h-4 w-4 mr-1 animate-spin" />
-                  Actualisation…
-                </>
-              ) : (
-                <>
-                  <RefreshCw className="h-4 w-4 mr-1" />
-                  Actualiser
-                </>
-              )}
-            </Button>
-          </div>
-        </form>
-
-        {hintNeeded && (
-          <div className="mt-3 inline-flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
-            <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
-            <span>
-              Renseignez <b>la date</b> et <b>la policy</b>, puis lancez <b>Calculer</b> ou <b>Actualiser</b>.
-            </span>
-          </div>
-        )}
-      </ComponentCard>
-
-      {/* ─────────── Résultats ─────────── */}
-      <ComponentCard title="Résultats du jour">
-        {/* Toolbar alignée */}
-        <div className="mb-4 grid gap-3 md:grid-cols-12 items-end">
-          {/* Recherche serveur */}
-          <div className="md:col-span-5 relative">
-            <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-            <Input
-              className="pl-9 h-11"
-              placeholder="Rechercher un TPE…"
-              value={draftSearch}
-              onChange={(e) => {
-                setDraftSearch(e.target.value);
-                setPage(1);
-              }}
-            />          </div>
-
-          {/* Statut (local) */}
-          <div className="md:col-span-3">
-            <div className="text-xs mb-1 text-gray-500">Statut (filtre local)</div>
-            <select
-              className="h-11 w-full rounded-lg border border-gray-300 bg-transparent px-4 text-sm dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
-              value={status}
-              onChange={(e) => setStatus(e.target.value)}
-            >
-              {statusOptions.map((o) => (
-                <option key={o.value} value={o.value}>
-                  {o.label}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {/* Page size */}
-          <div className="md:col-span-2">
-            <div className="text-xs mb-1 text-gray-500">Lignes / page</div>
-            <select
-              className="h-11 w-full rounded-lg border border-gray-300 bg-transparent px-4 text-sm dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
-              value={pageSize}
-              onChange={(e) => {
-                setPageSize(Number(e.target.value));
-                setPage(1);
-              }}
-            >
-              {[25, 50, 100, 200].map((n) => (
-                <option key={n} value={n}>
-                  {n}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {/* Actions */}
-          <div className="md:col-span-2 flex gap-2">
-            <Button
-              className="h-11 w-full"
-              variant="outline"
-              onClick={() => {
-                setPage(1);
-                read();
-              }}
-              disabled={!date || !policyId || refreshing}
-              title="Relire depuis l'API"
-            >
-              {refreshing ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <RefreshCw className="h-4 w-4 mr-1" />}
-              Appliquer
-            </Button>
-            {/* <Button className="h-11 w-full" variant="outline" onClick={toCSV} disabled={!filtered.length} title="Exporter la vue filtrée">
-              <Download className="h-4 w-4 mr-1" /> Export CSV
-            </Button> */}
-          </div>
+      {/* Filtres */}
+      <div className="mb-4 grid gap-3 md:grid-cols-12">
+        <div className="md:col-span-3">
+          <DateField
+            label="Date"
+            value={date}
+            onChange={(v) => {
+              setPage(1);
+              setDate(v);
+            }}
+            id="daily_date"
+          />
         </div>
 
-        {/* Erreur */}
-        {err && <div className="mb-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{err}</div>}
-
-        {/* Table */}
-        <div className="overflow-hidden rounded-xl border border-gray-200 bg-white dark:border-white/[0.05] dark:bg-white/[0.03]">
-          <div className="max-w-full overflow-x-auto">
-            <Table>
-              <TableHeader className="sticky top-0 z-10 bg-white/95 backdrop-blur border-b border-gray-100 dark:border-white/[0.05]">
-                <TableRow>
-                  <TableCell isHeader className="px-5 py-3 font-medium text-gray-500 text-start text-theme-xs">
-                    TPE
-                  </TableCell>
-                  <TableCell isHeader className="px-5 py-3 font-medium text-gray-500 text-start text-theme-xs">
-                    Décision (jour)
-                  </TableCell>
-                  <TableCell isHeader className="px-5 py-3 font-medium text-gray-500 text-start text-theme-xs">
-                    Slots OK
-                  </TableCell>
-                  <TableCell isHeader className="px-5 py-3 font-medium text-gray-500 text-start text-theme-xs">
-                    Slots FAIL
-                  </TableCell>
-                  <TableCell isHeader className="px-5 py-3 font-medium text-gray-500 text-start text-theme-xs">
-                    Créneaux en échec
-                  </TableCell>
-                </TableRow>
-              </TableHeader>
-
-              <TableBody className="divide-y divide-gray-100 dark:divide-white/[0.05]">
-                {/* Skeletons */}
-                {loading && !filtered.length
-                  ? Array.from({ length: 6 }).map((_, i) => (
-                      <TableRow key={`s-${i}`}>
-                        {Array.from({ length: 5 }).map((__, j) => (
-                          <TableCell key={j} className="px-5 py-4">
-                            <div className="h-3 w-28 animate-pulse rounded bg-gray-100" />
-                          </TableCell>
-                        ))}
-                      </TableRow>
-                    ))
-                  : null}
-
-                {/* Data */}
-                {!loading && Array.isArray(filtered) && filtered.length > 0 ? (
-                  filtered.map((r) => (
-                    <TableRow key={r.terminal_sn} className="hover:bg-gray-50/60">
-                      <TableCell className="px-5 py-4 text-start whitespace-nowrap">{r.terminal_sn}</TableCell>
-                      <TableCell className="px-5 py-4 text-start">
-                        <Badge size="sm" color={r.day_ok ? "success" : "error"}>
-                          {r.day_ok ? "Disponible" : "Indisponible"}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="px-5 py-4 text-start">{r.slot_ok_count}</TableCell>
-                      <TableCell className="px-5 py-4 text-start">{r.slot_fail_count}</TableCell>
-                      <TableCell className="px-5 py-4 text-start max-w-[600px]">
-                        <span className="block truncate" title={Array.isArray(r.failed_slots) ? r.failed_slots.join(", ") : ""}>
-                          {Array.isArray(r.failed_slots) ? r.failed_slots.join(", ") : ""}
-                        </span>
-                      </TableCell>
-                    </TableRow>
-                  ))
-                ) : !loading ? (
-                  <TableRow>
-                    <TableCell className="px-5 py-8 text-center text-gray-500" colSpan={5}>
-                      {Array.isArray(rows) ? "Aucun résultat" : "Chargement…"}
-                    </TableCell>
-                  </TableRow>
-                ) : null}
-              </TableBody>
-            </Table>
+        <div className="md:col-span-4">
+          <div className="text-xs mb-1 text-gray-500 dark:text-gray-400">
+            Règle de disponibilité
           </div>
+          <PolicySelect
+            value={policyId}
+            onChange={(v) => {
+              setPage(1);
+              setPolicyId(v);
+            }}
+          />
+        </div>
+
+        <div className="md:col-span-2">
+          <div className="text-xs mb-1 text-gray-500">Recherche (SN)</div>
+          <Input
+            placeholder="Filtrer par numéro de série…"
+            value={search}
+            onChange={(e) => {
+              setPage(1);
+              setSearch(e.target.value);
+            }}
+          />
+        </div>
+
+        <div className="md:col-span-3">
+          <div className="text-xs mb-1 text-gray-500">Statut</div>
+          <select
+            className="h-11 w-full rounded-lg border border-gray-300 bg-transparent px-2 text-sm dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
+            value={status}
+            onChange={(e) => {
+              setPage(1);
+              setStatus(e.target.value);
+            }}
+          >
+            <option value="all">Tous</option>
+            <option value="available">Disponibles</option>
+            <option value="unavailable">Indisponibles</option>
+          </select>
+        </div>
+      </div>
+
+      {/* KPIs */}
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 mb-4">
+        <KPI label="Total TPE (jour)" value={total} />
+        <KPI label="Disponibles (jour)" value={availableCount} tone="success" />
+        <KPI
+          label="Indisponibles (jour)"
+          value={unavailableCount}
+          tone="danger"
+        />
+        <KPI
+          label="Taux disponibilité (jour)"
+          value={availabilityPct}
+          tone={
+            total
+              ? availableCount / total >= 0.9
+                ? "success"
+                : availableCount / total >= 0.75
+                ? "warning"
+                : "danger"
+              : "default"
+          }
+        />
+      </div>
+
+      {/* Tableau */}
+      <div className="overflow-hidden rounded-xl border border-gray-200 bg-white dark:border-white/[0.05] dark:bg-white/[0.03]">
+        <div className="max-w-full overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b text-left">
+                <th className="px-5 py-3 text-gray-500 text-theme-xs whitespace-nowrap">
+                  Date
+                </th>
+                <th className="px-5 py-3 text-gray-500 text-theme-xs whitespace-nowrap">
+                  Terminal
+                </th>
+                <th className="px-5 py-3 text-gray-500 text-theme-xs whitespace-nowrap">
+                  Règle
+                </th>
+                <th className="px-5 py-3 text-gray-500 text-theme-xs whitespace-nowrap">
+                  Statut
+                </th>
+                <th className="px-5 py-3 text-gray-500 text-theme-xs whitespace-nowrap">
+                  Slots OK
+                </th>
+                <th className="px-5 py-3 text-gray-500 text-theme-xs whitespace-nowrap">
+                  Slots KO
+                </th>
+                <th className="px-5 py-3 text-gray-500 text-theme-xs whitespace-nowrap">
+                  Créneaux KO
+                </th>
+                <th className="px-5 py-3 text-gray-500 text-theme-xs whitespace-nowrap">
+                  Raisons KO
+                </th>
+                <th className="px-5 py-3 text-gray-500 text-theme-xs whitespace-nowrap">
+                  Calculé à
+                </th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100 dark:divide-white/[0.05]">
+              {tableRows.map((r, idx) => {
+                const label = r.day_ok ? "DISPONIBLE" : "INDISPONIBLE";
+                const tone = r.day_ok
+                  ? "bg-emerald-100 text-emerald-700"
+                  : "bg-rose-100 text-rose-700";
+                const slots = Array.isArray(r.failed_slots)
+                  ? r.failed_slots.join(", ")
+                  : "";
+                const reasons = Array.isArray(r.failed_reasons)
+                  ? r.failed_reasons.join(", ")
+                  : "";
+                return (
+                  <tr key={idx}>
+                    <td className="px-5 py-3 whitespace-nowrap">{r.date}</td>
+                    <td className="px-5 py-3 whitespace-nowrap">
+                      {r.terminal_sn}
+                    </td>
+                    <td className="px-5 py-3 whitespace-nowrap">
+                      {r.policy_id}
+                    </td>
+                    <td className="px-5 py-3 whitespace-nowrap">
+                      <span
+                        className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs ${tone}`}
+                      >
+                        {label}
+                      </span>
+                    </td>
+                    <td className="px-5 py-3 whitespace-nowrap">
+                      {r.slot_ok_count}
+                    </td>
+                    <td className="px-5 py-3 whitespace-nowrap">
+                      {r.slot_fail_count}
+                    </td>
+                    <td
+                      className="px-5 py-3 max-w-[320px] truncate"
+                      title={slots}
+                    >
+                      {slots}
+                    </td>
+                    <td className="px-5 py-3 max-w-[360px]">
+                      <div className="flex flex-wrap gap-1">
+                        {(r.failed_reasons || []).map((reason, i) => (
+                          <ReasonChip key={i} r={reason} />
+                        ))}
+                        {(!r.failed_reasons ||
+                          r.failed_reasons.length === 0) && (
+                          <span className="text-gray-400">—</span>
+                        )}
+                      </div>
+                    </td>
+                    <td className="px-5 py-3 whitespace-nowrap">
+                      {r.computed_at}
+                    </td>
+                  </tr>
+                );
+              })}
+              {!tableRows.length && (
+                <tr>
+                  <td
+                    className="px-5 py-5 text-center text-gray-500"
+                    colSpan={9}
+                  >
+                    {loading ? "Chargement…" : "Aucune donnée"}
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
         </div>
 
         {/* Pagination */}
-        <div className="mt-4 flex items-center justify-between">
-          <div className="text-xs text-gray-500">{meta ? `Total : ${meta.total}` : ""}</div>
+        <div className="flex items-center justify-between border-t px-5 py-3 text-sm">
+          <div className="text-gray-500">
+            Total :{" "}
+            <span className="font-medium text-gray-800 dark:text-white">
+              {total}
+            </span>
+          </div>
           <div className="flex items-center gap-2">
+            <select
+              className="h-9 rounded-lg border border-gray-300 bg-transparent px-3 text-sm dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
+              value={pageSize}
+              onChange={(e) => {
+                setPage(1);
+                setPageSize(Number(e.target.value));
+              }}
+            >
+              {[50, 100, 200, 500, 1000].map((n) => (
+                <option key={n} value={n}>
+                  {n} / page
+                </option>
+              ))}
+            </select>
             <Button
               variant="outline"
-              disabled={page <= 1 || refreshing}
-              onClick={() => {
-                setPage((p) => Math.max(1, p - 1));
-              }}
-              type="button"
+              disabled={page <= 1}
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
             >
               Précédent
             </Button>
-            <div className="text-sm px-2">Page {page}</div>
+            <span className="text-gray-600">
+              Page <span className="font-medium">{page}</span>
+            </span>
             <Button
               variant="outline"
-              disabled={refreshing}
-              onClick={() => {
-                setPage((p) => p + 1);
-              }}
-              type="button"
+              disabled={page * pageSize >= total}
+              onClick={() => setPage((p) => p + 1)}
             >
               Suivant
             </Button>
           </div>
         </div>
-      </ComponentCard>
-    </div>
+      </div>
+    </ComponentCard>
   );
 }

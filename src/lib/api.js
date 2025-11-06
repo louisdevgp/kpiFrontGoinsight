@@ -70,3 +70,19 @@ export const api = {
     return res.data
   },
 }
+
+export async function download(url, params) {
+  // construit l’URL avec query, fetch en blob et force un téléchargement .csv
+  const q = params ? "?" + new URLSearchParams(params).toString() : "";
+  const res = await fetch(url + q, { credentials: "include" });
+  if (!res.ok) throw new Error("download failed");
+  const blob = await res.blob();
+  const a = document.createElement("a");
+  const href = URL.createObjectURL(blob);
+  a.href = href;
+  a.download = url.includes("weekly") ? "weekly_export.csv" : "daily_export.csv";
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(href);
+}
