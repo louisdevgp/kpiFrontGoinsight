@@ -7,6 +7,7 @@ import PolicySelect from "../../../components/policiy/PolicySelect";
 import { api, notify, download } from "../../../lib/api";
 import { toMondayISO } from "../../../utils/date";
 import { CalendarDays, RefreshCw, Calculator, Download } from "lucide-react";
+import PageMeta from "../../../components/common/PageMeta";
 
 /* ====== Utilitaires ====== */
 function toISO(d) {
@@ -17,13 +18,12 @@ function toISO(d) {
     return "";
   }
 }
+
 function yesterdayISO() {
   const d = new Date();
   d.setDate(d.getDate() - 1);
   return d.toISOString().slice(0, 10);
 }
-
-
 
 function ReasonChip({ r }) {
   const map = {
@@ -124,7 +124,8 @@ export default function Daily() {
         api.post("/api/availability/daily/compute", {
           date,
           week_start,
-          policyId,
+          // 🔁 aligné avec le back : on envoie policyId
+          policyId: policyId,
         }),
         { loading: "Calcul quotidien…", success: "Calcul quotidien terminé ✅" }
       );
@@ -135,12 +136,18 @@ export default function Daily() {
   };
 
   async function exportDaily() {
-  if (!date || !policyId) return;
-  await notify(
-    download("/api/export/daily/export", { date, policyId, week_start: toMondayISO(date), auto: 1 }).then(() => {}).catch(() => {}),
-    { loading: "Export en cours…", success: "Téléchargement lancé ✅" }
-  );
-}
+    if (!date || !policyId) return;
+    await notify(
+      download("/api/export/daily/export", {
+        date,
+        // 🔁 idem : policyId
+        policyId: policyId,
+        week_start: toMondayISO(date),
+        auto: 1,
+      }),
+      { loading: "Export en cours…", success: "Téléchargement lancé ✅" }
+    );
+  }
 
   const load = async () => {
     if (!date || !policyId) return;
@@ -149,7 +156,8 @@ export default function Daily() {
       const res = await notify(
         api.get("/api/availability/daily", {
           date,
-          policyId,
+          // 🔁 idem : policyId
+          policyId: policyId,
           page,
           pageSize,
           search,
@@ -187,6 +195,11 @@ export default function Daily() {
   const tableRows = rows;
 
   return (
+    <>
+      <PageMeta
+        title="Disponibilité TPE — Quotidienne"
+        description="Vue d’ensemble des indicateurs de disponibilité TPE (jour/semaine)"
+      />
     <ComponentCard
       title="Disponibilité — Quotidienne"
       desc="Calcul et consultation quotidienne par règle."
@@ -213,9 +226,14 @@ export default function Daily() {
           />
           Actualiser
         </Button>
-<Button variant="outline" onClick={exportDaily} disabled={!date || !policyId}>
-  <Download className="h-4 w-4 mr-1" />Export CSV (avec raisons)
-</Button> 
+        <Button
+          variant="outline"
+          onClick={exportDaily}
+          disabled={!date || !policyId}
+        >
+          <Download className="h-4 w-4 mr-1" />
+          Export CSV (avec raisons)
+        </Button>
       </div>
 
       {/* Filtres */}
@@ -288,9 +306,9 @@ export default function Daily() {
           value={availabilityPct}
           tone={
             total
-              ? availableCount / total >= 0.9
+              ? availableCount / total >= 0.4
                 ? "success"
-                : availableCount / total >= 0.75
+                : availableCount / total >= 0.1
                 ? "warning"
                 : "danger"
               : "default"
@@ -304,35 +322,51 @@ export default function Daily() {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b text-left">
-                <th className="px-5 py-3 text-gray-500 text-theme-xs whitespace-nowrap">
-                  Date
+                <th
+                  className="px-5 py-3 text-gray-500 text-theme-xs whitespace-nowrap"
+                  title="Jour concerné par le calcul quotidien"
+                >
+                  Date (jour)
                 </th>
-                <th className="px-5 py-3 text-gray-500 text-theme-xs whitespace-nowrap">
-                  Terminal
+                <th
+                  className="px-5 py-3 text-gray-500 text-theme-xs whitespace-nowrap"
+                  title="Numéro de série du terminal"
+                >
+                  Numéro de série
                 </th>
-                <th className="px-5 py-3 text-gray-500 text-theme-xs whitespace-nowrap">
-                  Règle
+                <th
+                  className="px-5 py-3 text-gray-500 text-theme-xs whitespace-nowrap"
+                  title="Décision du jour (Disponible / Indisponible)"
+                >
+                  Statut du jour
                 </th>
-                <th className="px-5 py-3 text-gray-500 text-theme-xs whitespace-nowrap">
-                  Statut
+                <th
+                  className="px-5 py-3 text-gray-500 text-theme-xs whitespace-nowrap"
+                  title="Nombre de créneaux horaires conformes"
+                >
+                  Créneaux OK
                 </th>
-                <th className="px-5 py-3 text-gray-500 text-theme-xs whitespace-nowrap">
-                  Slots OK
+                <th
+                  className="px-5 py-3 text-gray-500 text-theme-xs whitespace-nowrap"
+                  title="Nombre de créneaux horaires non conformes"
+                >
+                  Créneaux NOK
                 </th>
-                <th className="px-5 py-3 text-gray-500 text-theme-xs whitespace-nowrap">
-                  Slots KO
+                <th
+                  className="px-5 py-3 text-gray-500 text-theme-xs whitespace-nowrap"
+                  title="Liste des créneaux horaires non conformes"
+                >
+                  Détails créneaux NOK
                 </th>
-                <th className="px-5 py-3 text-gray-500 text-theme-xs whitespace-nowrap">
-                  Créneaux KO
-                </th>
-                <th className="px-5 py-3 text-gray-500 text-theme-xs whitespace-nowrap">
-                  Raisons KO
-                </th>
-                <th className="px-5 py-3 text-gray-500 text-theme-xs whitespace-nowrap">
-                  Calculé à
+                <th
+                  className="px-5 py-3 text-gray-500 text-theme-xs whitespace-nowrap"
+                  title="Raisons de non-conformité (batterie, signal, géofence, etc.)"
+                >
+                  Raisons d’indisponibilité
                 </th>
               </tr>
             </thead>
+
             <tbody className="divide-y divide-gray-100 dark:divide-white/[0.05]">
               {tableRows.map((r, idx) => {
                 const label = r.day_ok ? "DISPONIBLE" : "INDISPONIBLE";
@@ -342,17 +376,11 @@ export default function Daily() {
                 const slots = Array.isArray(r.failed_slots)
                   ? r.failed_slots.join(", ")
                   : "";
-                const reasons = Array.isArray(r.failed_reasons)
-                  ? r.failed_reasons.join(", ")
-                  : "";
                 return (
                   <tr key={idx}>
                     <td className="px-5 py-3 whitespace-nowrap">{r.date}</td>
                     <td className="px-5 py-3 whitespace-nowrap">
                       {r.terminal_sn}
-                    </td>
-                    <td className="px-5 py-3 whitespace-nowrap">
-                      {r.policy_id}
                     </td>
                     <td className="px-5 py-3 whitespace-nowrap">
                       <span
@@ -383,9 +411,6 @@ export default function Daily() {
                           <span className="text-gray-400">—</span>
                         )}
                       </div>
-                    </td>
-                    <td className="px-5 py-3 whitespace-nowrap">
-                      {r.computed_at}
                     </td>
                   </tr>
                 );
@@ -448,5 +473,5 @@ export default function Daily() {
         </div>
       </div>
     </ComponentCard>
-  );
+  </>);
 }

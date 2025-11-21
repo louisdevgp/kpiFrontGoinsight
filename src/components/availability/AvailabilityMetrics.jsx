@@ -7,6 +7,7 @@ import { api, notify } from "../../lib/api";
 import { toMondayISO } from "../../utils/date";
 import { RefreshCw, CalendarDays, CalendarRange, Activity, Gauge, ShieldCheck, AlertTriangle } from "lucide-react";
 
+
 /* Utils */
 function yesterdayISO() {
   const d = new Date();
@@ -142,8 +143,8 @@ export default function AvailabilityMetrics() {
   // Tones pour badges jour / semaine
   const dailyPct = Number(data?.daily_available_pct ?? 0);
   const weeklyPct = Number(data?.weekly_available_pct ?? 0);
-  const dayTone = dailyPct >= 90 ? "success" : dailyPct >= 75 ? "warning" : "danger";
-  const weekTone = weeklyPct >= 90 ? "success" : weeklyPct >= 75 ? "warning" : "danger";
+  const dayTone = dailyPct >= 40 ? "success" : dailyPct >= 10 ? "warning" : "danger";
+  const weekTone = weeklyPct >= 40 ? "success" : weeklyPct >= 10 ? "warning" : "danger";
 
   return (
     <ComponentCard
@@ -186,7 +187,7 @@ export default function AvailabilityMetrics() {
           label="TPE disponibles (jour)"
           value={fmtInt(data?.tpe_day_ok)}
           icon={Gauge}
-          tone={dayTone}
+          tone="success"
           hint="Conformes à la policy choisie sur la journée"
         />
         <KPI
