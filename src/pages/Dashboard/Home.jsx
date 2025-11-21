@@ -3,16 +3,6 @@ import PageMeta from "../../components/common/PageMeta";
 // 👉 nos composants (même layout que ton template)
 import AvailabilityMetrics from "../../components/availability/AvailabilityMetrics";
 
-import WeeklyAvailabilityChart from "../../components/availability/WeeklyAvailabilityChart";
-
-import DailySlotsChart from "../../components/availability/DailySlotsChart";
-
-import PolicyWeekCard from "../../components/availability/PolicyWeekCard";
-
-import RecentFailures from "../../components/availability/RecentFailures";
-
-import ModelBreakdown from "../../components/availability/ModelBreakdown";
-
 export default function Home() {
   return (
     <>

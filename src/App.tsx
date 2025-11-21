@@ -17,6 +17,8 @@ import FormElements from "./pages/Forms/FormElements";
 import Blank from "./pages/Blank";
 import AppLayout from "./layout/AppLayout";
 import { ScrollToTop } from "./components/common/ScrollToTop";
+
+// @ts-expect-error: Could not find a declaration file for './pages/Dashboard/Home.jsx'
 import Home from "./pages/Dashboard/Home";
 // @ts-expect-error: Could not find a declaration file for './pages/Kpi/Policies/Policies.jsx'
 import Policies from "./pages/Kpi/Policies/Policies";
